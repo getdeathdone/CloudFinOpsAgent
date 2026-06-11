@@ -1,0 +1,86 @@
+name: cloud-finops-agent
+
+services:
+  localstack:
+    image: localstack/localstack:3.8
+    container_name: cloud-finops-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: "s3,ec2,cloudwatch,iam"
+      AWS_DEFAULT_REGION: "${AWS_REGION:-us-east-1}"
+      DEBUG: "${LOCALSTACK_DEBUG:-0}"
+      PERSISTENCE: "1"
+      LS_LOG: "${LOCALSTACK_LOG_LEVEL:-info}"
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: cloud-finops-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  langfuse-postgres:
+    image: postgres:16-alpine
+    container_name: cloud-finops-langfuse-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: "${LANGFUSE_POSTGRES_DB:-langfuse}"
+      POSTGRES_USER: "${LANGFUSE_POSTGRES_USER:-langfuse}"
+      POSTGRES_PASSWORD: "${LANGFUSE_POSTGRES_PASSWORD:-langfuse_password}"
+    volumes:
+      - langfuse-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: cloud-finops-langfuse
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "postgresql://${LANGFUSE_POSTGRES_USER:-langfuse}:${LANGFUSE_POSTGRES_PASSWORD:-langfuse_password}@langfuse-postgres:5432/${LANGFUSE_POSTGRES_DB:-langfuse}"
+      NEXTAUTH_URL: "${LANGFUSE_PUBLIC_URL:-http://localhost:3000}"
+      NEXTAUTH_SECRET: "${LANGFUSE_NEXTAUTH_SECRET:-change-me-local-nextauth-secret}"
+      SALT: "${LANGFUSE_SALT:-change-me-local-salt}"
+      TELEMETRY_ENABLED: "${LANGFUSE_TELEMETRY_ENABLED:-false}"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "${LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES:-false}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/public/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+volumes:
+  localstack-data:
+  qdrant-data:
+  langfuse-postgres-data:
