@@ -29,12 +29,15 @@ def create_bucket_if_missing(bucket_name: str) -> None:
     """Create an S3 bucket unless it already exists."""
 
     s3 = client("s3")
+    bucket_exists = True
     try:
         s3.head_bucket(Bucket=bucket_name)
+    except ClientError:
+        bucket_exists = False
+
+    if bucket_exists:
         print(f"S3 bucket already exists: {bucket_name}")
         return
-    except ClientError:
-        pass
 
     if AWS_REGION == "us-east-1":
         s3.create_bucket(Bucket=bucket_name)
