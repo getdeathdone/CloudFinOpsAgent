@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     LANGFUSE_HOST: AnyUrl = Field(default="http://localhost:3000")
     LLM_MODEL_NAME: str = Field(default="gpt-4o-mini")
     OPENAI_API_KEY: SecretStr | None = Field(default=None)
+    ANTHROPIC_API_KEY: SecretStr | None = Field(default=None)
 
     @field_validator("ENVIRONMENT", mode="before")
     @classmethod
