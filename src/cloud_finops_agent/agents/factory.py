@@ -56,26 +56,34 @@ def create_langfuse_callbacks(settings: Settings | None = None) -> list[Any]:
 
 
 def create_llm(settings: Settings | None = None) -> BaseChatModel:
-    """Create the configured chat model provider from Settings."""
+    """Create the configured chat model provider from Settings with Ollama fallback."""
 
     resolved_settings = settings or get_settings()
     model_name = resolved_settings.LLM_MODEL_NAME
-    if model_name.lower().startswith("claude"):
+
+    anthropic_key = _secret_value(resolved_settings.ANTHROPIC_API_KEY)
+    openai_key = _secret_value(resolved_settings.OPENAI_API_KEY)
+
+    if anthropic_key:
         from langchain_anthropic import ChatAnthropic
+        return ChatAnthropic(model=model_name, temperature=0, api_key=anthropic_key)
 
-        api_key = _secret_value(resolved_settings.ANTHROPIC_API_KEY)
-        kwargs: dict[str, Any] = {"model": model_name, "temperature": 0}
-        if api_key:
-            kwargs["api_key"] = api_key
-        return ChatAnthropic(**kwargs)
+    if openai_key:
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(model=model_name, temperature=0, api_key=openai_key)
 
-    from langchain_openai import ChatOpenAI
+    # Fallback to Ollama if no cloud API keys are present
+    from langchain_community.chat_models import ChatOllama
 
-    api_key = _secret_value(resolved_settings.OPENAI_API_KEY)
-    kwargs = {"model": model_name, "temperature": 0}
-    if api_key:
-        kwargs["api_key"] = api_key
-    return ChatOpenAI(**kwargs)
+    # Smart fallback for model name: if it's a GPT model but we're using Ollama, use mistral
+    if any(gpt in model_name.lower() for gpt in ["gpt-3", "gpt-4", "gpt-o"]):
+        model_name = "mistral"
+
+    return ChatOllama(
+        model=model_name,
+        temperature=0,
+        base_url="http://localhost:11434"
+    )
 
 
 def create_discovery_agent(settings: Settings | None = None) -> Runnable[Any, Any]:

@@ -289,14 +289,15 @@ async def _retrieve_finops_rules(
     query_vector = await _embed_query(query=query, settings=settings)
     client = AsyncQdrantClient(url=str(settings.QDRANT_URL))
     try:
-        results = await client.search(
+        # Using query_points as the universal method for Qdrant 1.10+
+        results = await client.query_points(
             collection_name=settings.QDRANT_COLLECTION,
-            query_vector=query_vector,
+            query=query_vector,
             limit=limit,
             with_payload=True,
         )
         rules: list[dict[str, Any]] = []
-        for result in results:
+        for result in results.points:
             payload = dict(result.payload or {})
             payload["qdrant_point_id"] = str(result.id)
             payload["relevance_score"] = float(result.score)
