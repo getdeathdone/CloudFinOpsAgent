@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from datetime import datetime
 from typing import Annotated
 
 import structlog
@@ -50,6 +51,20 @@ def _latest_report(state: FinOpsGraphState) -> str:
     if not messages:
         return "No report was generated."
     return _message_text(messages[-1])
+
+
+def _save_report_to_disk(report_text: str) -> str:
+    """Save the audit report to a timestamped file in the reports directory."""
+
+    os.makedirs("reports", exist_ok=True)
+    
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    file_path = f"reports/finops_report_{timestamp}.md"
+    
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(report_text)
+    
+    return file_path
 
 
 async def run_audit_async(*, model: str | None, environment: str | None) -> FinOpsGraphState:
@@ -105,7 +120,11 @@ def run_audit(
         )
         console.print(Panel(error_summary, title="Errors", style="yellow"))
 
-    console.print(Panel(_latest_report(final_state), title="Final Report", style="white"))
+    report_content = _latest_report(final_state)
+    console.print(Panel(report_content, title="Final Report", style="white"))
+
+    saved_path = _save_report_to_disk(report_content)
+    console.print(f"[bold green][+] Отчет успешно сохранен на диск: {saved_path}[/bold green]")
 
 
 def main() -> None:
