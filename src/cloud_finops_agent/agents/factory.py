@@ -107,10 +107,21 @@ def create_discovery_agent(settings: Settings | None = None) -> Runnable[Any, An
     return llm
 
 
-def create_analyst_agent(settings: Settings | None = None) -> Runnable[Any, OptimizationPlan]:
-    """Create Analyst LLM constrained to return OptimizationPlan."""
+def create_analyst_agent(settings: Settings | None = None) -> Runnable[Any, OptimizationPlan] | BaseChatModel:
+    """Create Analyst LLM with structured output when supported."""
 
-    return create_llm(settings).with_structured_output(OptimizationPlan)
+    llm = create_llm(settings)
+    provider_name = llm.__class__.__name__
+
+    if provider_name == "ChatOllama":
+        logger.info(
+            "structured_output_skipped",
+            provider=provider_name,
+            reason="with_structured_output not supported natively for ChatOllama"
+        )
+        return llm
+
+    return llm.with_structured_output(OptimizationPlan)
 
 
 def create_executor_agent(settings: Settings | None = None) -> BaseChatModel:

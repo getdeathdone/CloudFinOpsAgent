@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -307,6 +308,26 @@ async def _retrieve_finops_rules(
         await client.close()
 
 
+def _parse_optimization_plan_fallback(content: str) -> OptimizationPlan:
+    """Attempt to extract OptimizationPlan from raw LLM text (fallback for Ollama)."""
+
+    # Try to find JSON block in Markdown or raw text
+    json_match = re.search(r"(\{.*\})", content, re.DOTALL)
+    if json_match:
+        try:
+            data = json.loads(json_match.group(1))
+            return OptimizationPlan.model_validate(data)
+        except (json.JSONDecodeError, ValidationError):
+            logger.warning("failed_to_parse_json_from_fallback_content")
+
+    # If no valid JSON found, create a mock plan using the text as summary
+    return OptimizationPlan(
+        plan_id=f"plan-fallback-{hashlib.md5(content.encode()).hexdigest()[:8]}",
+        summary=content.strip() or "No summary provided by the analyst model.",
+        findings=[],
+    )
+
+
 async def analyst_node(state: FinOpsGraphState) -> dict[str, Any]:
     """Analyze the infrastructure snapshot with retrieved FinOps rules."""
 
@@ -320,7 +341,7 @@ async def analyst_node(state: FinOpsGraphState) -> dict[str, Any]:
         retrieval_query = _snapshot_to_query(snapshot)
         rules = await _retrieve_finops_rules(query=retrieval_query, settings=settings)
         analyst_agent = create_analyst_agent(settings)
-        plan = await analyst_agent.ainvoke(
+        response = await analyst_agent.ainvoke(
             [
                 SystemMessage(content=ANALYST_AGENT_PROMPT),
                 HumanMessage(
@@ -333,8 +354,13 @@ async def analyst_node(state: FinOpsGraphState) -> dict[str, Any]:
             ],
             config=_build_langfuse_config(settings=settings, run_name="agent-analyst"),
         )
-        if not isinstance(plan, OptimizationPlan):
-            plan = OptimizationPlan.model_validate(plan)
+        
+        # Handle cases where the LLM doesn't support native structured output (e.g. ChatOllama)
+        if isinstance(response, OptimizationPlan):
+            plan = response
+        else:
+            content = _message_content(response)
+            plan = _parse_optimization_plan_fallback(content)
 
         logger.info(
             "analyst_node_completed",
