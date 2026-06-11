@@ -370,6 +370,30 @@ async def executor_node(state: FinOpsGraphState) -> dict[str, Any]:
         validated_state = validate_graph_state(state)
         plan = validated_state.optimization_plan
         if plan is None:
+            if validated_state.errors:
+                error_lines = "\n".join(
+                    (
+                        f"- {error.agent_name}: {error.error_type} "
+                        f"(retry_count={error.retry_count}) - {error.message}"
+                    )
+                    for error in validated_state.errors
+                )
+                fallback_report = (
+                    "# Cloud FinOps Audit Report\n\n"
+                    "## Executive Summary\n\n"
+                    "The audit could not be completed because one or more technical errors "
+                    "prevented the graph from producing a validated optimization plan.\n\n"
+                    "## Technical Errors\n\n"
+                    f"{error_lines}\n\n"
+                    "## Remediation Code\n\n"
+                    "No automated remediation code was generated because the infrastructure "
+                    "analysis did not complete successfully. Re-run the audit after resolving "
+                    "the errors above.\n"
+                )
+                return {
+                    "messages": [AIMessage(content=fallback_report)],
+                    "current_agent": "end",
+                }
             raise ValueError("optimization_plan is required before executor_node can run.")
 
         snapshot = validated_state.infrastructure_snapshot

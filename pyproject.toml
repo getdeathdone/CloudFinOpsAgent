@@ -42,6 +42,9 @@ dev = [
     "types-aiobotocore[cloudwatch,ec2,iam,s3]>=2.15.2,<3.0.0",
 ]
 
+[project.scripts]
+cloud-finops-agent = "cloud_finops_agent.main:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
