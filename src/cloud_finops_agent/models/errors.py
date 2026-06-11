@@ -5,8 +5,9 @@ from __future__ import annotations
 import traceback
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class AgentName(StrEnum):
@@ -57,6 +58,17 @@ class AgentError(BaseModel):
         description="Whether graph routing may attempt a retry or correction path.",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def fallback_empty_message(cls, data: Any) -> Any:
+        """Ensure message is never empty to satisfy min_length=1 constraint."""
+
+        if isinstance(data, dict):
+            message = data.get("message")
+            if message is not None and not str(message).strip():
+                data["message"] = "Unknown error occurred (empty exception message)"
+        return data
+
     @field_validator("error_type", mode="before")
     @classmethod
     def normalize_error_type(cls, value: object) -> object:
@@ -92,10 +104,14 @@ class AgentError(BaseModel):
     ) -> AgentError:
         """Create an AgentError from a caught exception with a formatted stack trace."""
 
+        msg = str(exception).strip()
+        if not msg:
+            msg = "Unknown error occurred (empty exception message)"
+
         return cls(
             agent_name=agent_name,
             error_type=error_type,
-            message=str(exception),
+            message=msg,
             stack_trace="".join(
                 traceback.format_exception(type(exception), exception, exception.__traceback__)
             ),

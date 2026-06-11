@@ -87,10 +87,24 @@ def create_llm(settings: Settings | None = None) -> BaseChatModel:
 
 
 def create_discovery_agent(settings: Settings | None = None) -> Runnable[Any, Any]:
-    """Create Discovery LLM with AWS discovery tools bound."""
+    """Create Discovery LLM with AWS discovery tools bound when supported."""
 
+    llm = create_llm(settings)
     tools = get_discovery_tools()
-    return create_llm(settings).bind_tools(tools)
+
+    # Conditionally bind tools based on provider support
+    # ChatOllama (community) may throw NotImplementedError for native tool calling
+    provider_name = llm.__class__.__name__
+
+    if provider_name in ("ChatOpenAI", "ChatAnthropic"):
+        return llm.bind_tools(tools)
+
+    logger.info(
+        "tool_calling_skipped",
+        provider=provider_name,
+        reason="Native tool calling not supported or disabled for this provider"
+    )
+    return llm
 
 
 def create_analyst_agent(settings: Settings | None = None) -> Runnable[Any, OptimizationPlan]:
